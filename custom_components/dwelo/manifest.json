@@ -2,7 +2,7 @@
   "domain": "dwelo",
   "name": "Dwelo",
   "version": "1.0.0",
-  "codeowners": [],
+  "codeowners": ["@mzenko"],
   "config_flow": true,
   "dependencies": [],
   "iot_class": "cloud_polling",
