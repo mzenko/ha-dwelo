@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Dwelo",
+        "description": "Paste your Dwelo API token.\n\nTo get it: open Chrome DevTools → Network tab, sign in to web.dwelo.com, find any request to api.dwelo.com, and copy the value after `Token ` in the Authorization header.",
+        "data": {
+          "token": "API Token"
+        }
+      },
+      "select_unit": {
+        "title": "Select Unit",
+        "description": "Multiple units were found. Select the one to configure.",
+        "data": {
+          "unit": "Unit"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid token — please re-copy it from the browser DevTools Authorization header.",
+      "cannot_connect": "Unable to connect to the Dwelo API. Check your network and try again.",
+      "no_units": "No units found for this token. Verify the account has an assigned unit.",
+      "unknown": "Unexpected error. Check the Home Assistant logs for details."
+    },
+    "abort": {
+      "already_configured": "This Dwelo unit is already configured."
+    }
+  }
+}
