@@ -25,14 +25,9 @@ Copy `custom_components/dwelo/` to your Home Assistant `custom_components/` dire
 
 Add the integration via **Settings** → **Devices & Services** → **Add Integration** → **Dwelo**.
 
-You'll need a Dwelo API token:
+Enter your Dwelo account email and password. The integration will log in, auto-discover your units, and prompt you to select one if you have multiple.
 
-1. Open Chrome DevTools (F12) → **Network** tab
-2. Sign in to [web.dwelo.com](https://web.dwelo.com)
-3. Find any request to `api.dwelo.com`
-4. Copy the token value from the `Authorization: Token <token>` header
-
-The integration will auto-discover your units. If you have multiple units, you'll be prompted to select one.
+If your session token expires, the integration will automatically re-authenticate using your stored credentials. If that fails (e.g. password changed), you'll be prompted to re-enter your credentials via the Home Assistant UI.
 
 ## Supported Devices
 

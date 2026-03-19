@@ -2,6 +2,7 @@ DOMAIN = "dwelo"
 API_BASE_URL = "https://api.dwelo.com"
 
 DEFAULT_SCAN_INTERVAL = 30  # seconds
+APPLICATION_ID = "concierge"
 
 # Sensor type values returned by GET /v3/sensor/gateway/{gateway_id}/
 # "light" is the confirmed value for a Z-Wave binary switch with load=light.

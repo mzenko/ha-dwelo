@@ -15,7 +15,7 @@ import aiohttp
 import pytest
 from dotenv import load_dotenv
 
-from custom_components.dwelo.api import DweloApi
+from custom_components.dwelo.api import DweloApi, DweloLoginError
 from custom_components.dwelo.const import (
     BINARY_LIGHT_SENSOR_TYPES,
     LIGHT_DEVICE_TYPES,
@@ -25,14 +25,23 @@ from custom_components.dwelo.const import (
 
 load_dotenv()
 
+EMAIL = os.environ.get("DWELO_EMAIL", "")
+PASSWORD = os.environ.get("DWELO_PASSWORD", "")
 TOKEN = os.environ.get("DWELO_TOKEN", "")
 GATEWAY_ID = os.environ.get("DWELO_GATEWAY_ID", "")
 COMMUNITY_ID = os.environ.get("DWELO_COMMUNITY_ID", "")
 
-pytestmark = pytest.mark.skipif(
+needs_token = pytest.mark.skipif(
     not TOKEN or not GATEWAY_ID,
     reason="DWELO_TOKEN and DWELO_GATEWAY_ID must be set in .env to run live tests",
 )
+
+needs_credentials = pytest.mark.skipif(
+    not EMAIL or not PASSWORD,
+    reason="DWELO_EMAIL and DWELO_PASSWORD must be set in .env to run login tests",
+)
+
+pytestmark = needs_token
 
 
 # ---------------------------------------------------------------------------
@@ -176,3 +185,41 @@ async def test_get_community_doors(api):
         assert "panelId" in d
         assert "name" in d
         assert "secondsOpen" in d
+
+
+# ---------------------------------------------------------------------------
+# Login tests
+# ---------------------------------------------------------------------------
+
+@needs_credentials
+async def test_login_returns_token():
+    """Verify that async_login returns a non-empty JWT token."""
+    async with aiohttp.ClientSession() as session:
+        token = await DweloApi.async_login(EMAIL, PASSWORD, session)
+
+    assert isinstance(token, str)
+    assert len(token) > 0
+    # JWT tokens have 3 dot-separated parts
+    assert token.count(".") == 2, f"Expected JWT format, got: {token[:40]}..."
+    print(f"\nLogin returned token of length {len(token)}")
+
+
+@needs_credentials
+async def test_login_bad_password():
+    """Verify that a wrong password raises DweloLoginError."""
+    async with aiohttp.ClientSession() as session:
+        with pytest.raises(DweloLoginError):
+            await DweloApi.async_login(EMAIL, "wrong_password_123", session)
+
+
+@needs_credentials
+async def test_login_token_is_usable():
+    """Verify that a token obtained via login can fetch sensor states."""
+    async with aiohttp.ClientSession() as session:
+        token = await DweloApi.async_login(EMAIL, PASSWORD, session)
+        api = DweloApi(token=token, gateway_id=GATEWAY_ID, session=session)
+        readings = await api.get_sensor_states()
+
+    assert isinstance(readings, list)
+    assert len(readings) > 0
+    print(f"\nLogin token successfully fetched {len(readings)} sensor readings")

@@ -6,7 +6,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import API_BASE_URL
+from .const import API_BASE_URL, APPLICATION_ID
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +21,10 @@ class DweloAuthError(DweloApiError):
     """Raised when the token is invalid or expired."""
 
 
+class DweloLoginError(DweloApiError):
+    """Raised when login fails (bad email/password)."""
+
+
 class DweloApi:
     """Thin async wrapper around the Dwelo cloud REST API."""
 
@@ -33,6 +37,43 @@ class DweloApi:
         self._token = token
         self._gateway_id = gateway_id
         self._session = session
+
+    def update_token(self, token: str) -> None:
+        """Replace the current token (used after auto-reauth)."""
+        self._token = token
+
+    @staticmethod
+    async def async_login(
+        email: str,
+        password: str,
+        session: aiohttp.ClientSession,
+    ) -> str:
+        """Authenticate with email/password and return a JWT token.
+
+        Raises DweloLoginError on invalid credentials.
+        Raises DweloApiError on network/unexpected errors.
+        """
+        url = f"{API_BASE_URL}/v3/login/"
+        payload = {
+            "email": email,
+            "password": password,
+            "applicationId": APPLICATION_ID,
+        }
+        try:
+            async with session.post(
+                url, json=payload, timeout=REQUEST_TIMEOUT
+            ) as resp:
+                body = await resp.json()
+                if resp.status == 201:
+                    return body["token"]
+                msg = body.get("message", "Login failed")
+                if isinstance(msg, dict):
+                    msg = ", ".join(f"{k}: {v}" for k, v in msg.items())
+                raise DweloLoginError(msg)
+        except DweloApiError:
+            raise
+        except aiohttp.ClientError as err:
+            raise DweloApiError(f"Connection error during login: {err}") from err
 
     @property
     def _headers(self) -> dict[str, str]:

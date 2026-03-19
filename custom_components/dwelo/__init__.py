@@ -16,6 +16,20 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["light", "button"]
 
 
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate old config entries to the current version."""
+    if config_entry.version < 2:
+        _LOGGER.info(
+            "Migrating Dwelo config entry from version %s to 2",
+            config_entry.version,
+        )
+        # v1 stored only a token; v2 requires email+password.
+        # Bump the version — the first poll will fail auth (no credentials),
+        # triggering the reauth flow where the user provides them.
+        hass.config_entries.async_update_entry(config_entry, version=2)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Dwelo from a config entry."""
     token = entry.data["token"]
@@ -25,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
     api = DweloApi(token=token, gateway_id=gateway_id, session=session)
 
-    coordinator = DweloCoordinator(hass, api)
+    coordinator = DweloCoordinator(hass, api, entry)
 
     # Fetch device metadata (names/types) once on startup — non-fatal if unavailable.
     await coordinator.async_load_devices()

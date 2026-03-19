@@ -9,7 +9,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import DweloApi, DweloApiError, DweloAuthError
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from .api import DweloApi, DweloApiError, DweloAuthError, DweloLoginError
 from .const import (
     BINARY_LIGHT_SENSOR_TYPES,
     DEFAULT_SCAN_INTERVAL,
@@ -25,7 +28,7 @@ _LOGGER = logging.getLogger(__name__)
 class DweloCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]):
     """Polls /v3/sensor/gateway/{id}/ and exposes per-device sensor maps."""
 
-    def __init__(self, hass: HomeAssistant, api: DweloApi) -> None:
+    def __init__(self, hass: HomeAssistant, api: DweloApi, entry: ConfigEntry) -> None:
         super().__init__(
             hass,
             _LOGGER,
@@ -33,6 +36,7 @@ class DweloCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]):
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )
         self.api = api
+        self.config_entry = entry
         # device_id -> metadata dict (name, deviceType, …)
         self.devices: dict[int, dict[str, Any]] = {}
         # uid -> door dict (name, panelId, secondsOpen, …)
@@ -42,10 +46,8 @@ class DweloCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]):
         """Fetch all sensor readings and reshape into {device_id: {sensorType: value}}."""
         try:
             readings = await self.api.get_sensor_states()
-        except DweloAuthError as err:
-            raise ConfigEntryAuthFailed(
-                "Dwelo token is invalid or expired — reconfigure the integration"
-            ) from err
+        except DweloAuthError:
+            readings = await self._try_reauth()
         except DweloApiError as err:
             raise UpdateFailed(f"Error communicating with Dwelo API: {err}") from err
 
@@ -55,6 +57,41 @@ class DweloCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]):
             sensor_map.setdefault(device_id, {})[reading["sensorType"]] = reading["value"]
 
         return sensor_map
+
+    async def _try_reauth(self) -> list[dict[str, Any]]:
+        """Attempt to re-login and retry the sensor fetch.
+
+        Returns sensor readings on success.
+        Raises ConfigEntryAuthFailed if re-login fails.
+        """
+        email = self.config_entry.data.get("email")
+        password = self.config_entry.data.get("password")
+        if not email or not password:
+            raise ConfigEntryAuthFailed(
+                "Dwelo token expired and no stored credentials for re-login"
+            )
+
+        try:
+            session = async_get_clientsession(self.hass)
+            new_token = await DweloApi.async_login(email, password, session)
+        except (DweloLoginError, DweloApiError) as err:
+            raise ConfigEntryAuthFailed(
+                "Dwelo token expired and re-login failed"
+            ) from err
+
+        self.api.update_token(new_token)
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            data={**self.config_entry.data, "token": new_token},
+        )
+        _LOGGER.info("Dwelo token refreshed via auto-reauth")
+
+        try:
+            return await self.api.get_sensor_states()
+        except DweloAuthError as err:
+            raise ConfigEntryAuthFailed(
+                "Dwelo auth still failing after re-login"
+            ) from err
 
     async def async_load_devices(self) -> None:
         """Fetch device metadata (names, types). Non-fatal if the endpoint is absent."""
